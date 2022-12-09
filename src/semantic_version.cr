@@ -82,6 +82,58 @@ struct SemanticVersion
     end
   end
 
+  enum Bump
+    Major
+    Minor
+    Patch
+    PreMajor
+    PreMinor
+    PrePatch
+    PreRelease
+  end
+
+  # Returns a new `SemanticVersion` created by evaluating the specified bump to
+  # the current version.
+  #
+  # A `prerelease_id` may be specified to determine which kind of pre-release
+  # ("alpha", "rc", etc.) will be applied if the given bump type specifies is
+  # not a full release (Major, Minor, Patch). If the bump is a full release, the
+  # argument is ignored.
+  #
+  # ```
+  # require "semantic_version"
+  #
+  # current_version = SemanticVersion.new 1, 1, 1
+  # next_minor = current_version.bump SemanticVersion::Bump::Minor
+  # next_premajor = current_version.bump SemanticVersion::Bump::PreMajor
+  # next_prerelease = next_premajor.bump SemanticVersion::Bump::PreRelease
+  # current_version # => SemanticVersion(@build=nil, @major=1, @minor=1, @patch=1, @prerelease=SemanticVersion::Prerelease(@identifiers=[]))
+  # next_minor      # => SemanticVersion(@build=nil, @major=1, @minor=2, @patch=0, @prerelease=SemanticVersion::Prerelease(@identifiers=[]))
+  # next_premajor   # => SemanticVersion(@build=nil, @major=2, @minor=0, @patch=0, @prerelease=SemanticVersion::Prerelease(@identifiers=["rc", 1]))
+  # next_prerelease # => SemanticVersion(@build=nil, @major=2, @minor=0, @patch=0, @prerelease=SemanticVersion::Prerelease(@identifiers=["rc", 2]))
+  # ```
+  def bump(type : Bump, prerelease_id = "rc")
+    new_major, new_minor, new_patch = major, minor, patch
+    from_prerelease = !prerelease.identifiers.empty?
+
+    return SemanticVersion.new new_major, new_minor, new_patch if type.patch? && from_prerelease
+
+    case type
+    in .major?, .pre_major? then new_major += 1; new_minor = new_patch = 0
+    in .minor?, .pre_minor? then new_minor += 1; new_patch = 0
+    in .patch?, .pre_patch? then new_patch += 1
+    in .pre_release?        then new_patch += 1 if !from_prerelease
+    end
+
+    new_prerelease = case type
+                     in .major?, .minor?, .patch?             then nil
+                     in .pre_major?, .pre_minor?, .pre_patch? then Prerelease.new [prerelease_id, 1]
+                     in .pre_release?                         then prerelease.bump
+                     end
+
+    SemanticVersion.new new_major, new_minor, new_patch, new_prerelease
+  end
+
   # The comparison operator.
   #
   # Returns `-1`, `0` or `1` depending on whether `self`'s version is lower than *other*'s,
@@ -187,6 +239,36 @@ struct SemanticVersion
 
       return -1 if identifiers.size != other.identifiers.size # larger = higher precedence
       0
+    end
+
+    # Returns a new `Prerelease` created by incrementing the last Int32 element
+    # of the `Array` of identifiers.
+    #
+    # If no Int32 element is found, returns a new prerelease with an identifier
+    # of [prerelease_id, 1]. The `prerelease_id` argument can be given to
+    # specify the type of pre-release ("alpha", "rc" and etc.).
+    #
+    # ```
+    # require "semantic_version"
+    #
+    # current_prerelease = SemanticVersion::Prerelease.new ["rc", 1]
+    # next_prerelease = current_prerelease.bump
+    # next_prerelease # => SemanticVersion::Prerelease(@identifiers=["rc", 2])
+    #
+    # current_prerelease = SemanticVersion::Prerelease.new []
+    # next_prerelease = current_prerelease.bump "alpha"
+    # next_prerelease # => SemanticVersion::Prerelease(@identifiers=["alpha", 1])
+    # ```
+    def bump(prerelease_id = "rc")
+      new_identifiers = identifiers
+      (0...new_identifiers.size).reverse_each do |i|
+        identifier = new_identifiers[i]
+        if identifier.is_a? Int32
+          new_identifiers[i] = identifier + 1
+          return Prerelease.new new_identifiers
+        end
+      end
+      Prerelease.new [prerelease_id, 1]
     end
 
     private def compare(x : Int32, y : String)

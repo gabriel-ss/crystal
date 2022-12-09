@@ -88,6 +88,43 @@ describe SemanticVersion do
     end
   end
 
+  it "bumps to the correct version" do
+    sversions = %w(
+      1.1.1
+      1.2.0
+      1.2.1
+      2.0.0
+      2.0.1-rc.1
+      2.0.1-rc.2
+      2.0.1
+      2.0.2-rc.1
+      2.1.0
+      2.2.0-rc.1
+      3.0.0
+      4.0.0-rc.1
+    )
+
+    bumps = [
+      SemanticVersion::Bump::Minor,
+      SemanticVersion::Bump::Patch,
+      SemanticVersion::Bump::Major,
+      SemanticVersion::Bump::PreRelease,
+      SemanticVersion::Bump::PreRelease,
+      SemanticVersion::Bump::Patch,
+      SemanticVersion::Bump::PrePatch,
+      SemanticVersion::Bump::Minor,
+      SemanticVersion::Bump::PreMinor,
+      SemanticVersion::Bump::Major,
+      SemanticVersion::Bump::PreMajor,
+    ]
+
+    versions = sversions.map { |s| SemanticVersion.parse(s) }.to_a
+
+    bumps.each_with_index do |bump_type, i|
+      versions[i].try(&.bump(bump_type).should eq versions[i + 1])
+    end
+  end
+
   describe SemanticVersion::Prerelease do
     it "compares <" do
       sprereleases = %w(
@@ -101,6 +138,23 @@ describe SemanticVersion do
 
       prereleases.each_cons(2) do |pair|
         pair[0].should be < pair[1]
+      end
+    end
+
+    it "bumps to the correct version" do
+      sprereleases = %w(
+        rc
+        rc.1
+        rc.1
+        rc.2
+        rc.1.1
+        rc.1.2
+      )
+
+      prereleases = sprereleases.map { |s| SemanticVersion::Prerelease.parse(s) }
+
+      prereleases.each_slice(2) do |pair|
+        pair[0].bump.should eq pair[1]
       end
     end
   end
